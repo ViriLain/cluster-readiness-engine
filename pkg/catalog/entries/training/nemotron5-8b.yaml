@@ -381,6 +381,37 @@ overrides:
             # is a large win, so let Transformer Engine choose per shape.
             - name: ATTENTION_BACKEND
               value: auto
+# --- AWS + B300 (p6-b300.48xlarge; 8 GPUs, 16 EFA; dedicated compatible image) ---
+# x86 HGX B300 on AWS is an EFA fabric like p5 H100, with 16 EFA devices
+# instead of 32 and a CUDA 13 host stack. The default pytorch:25.08 image
+# predates AWS's P6-B300 EFA/OFI minimums, so the image fragment pins
+# pytorch:26.04 by digest on the trainer and both init containers, and
+# NCCL_NET_PLUGIN=ofi selects its bundled AWS plugin (its default fell back
+# to sockets on two-node B300). The transport env is shared with H100.
+# Communication on this image is validated on two B300 nodes; Nemotron
+# training on it is not yet validated. See the fragment headers.
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: b300
+  dependencies:
+{{ lib "deps/aws-b300-efa-resources-training.yaml" . | indent 2 }}
+{{ lib "deps/aws-b300-training-image.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            image: nvcr.io/nvidia/pytorch:26.04-py3@sha256:be06a21bd95a46bce1a5cfc0576051a40209f328440edaa2ba5cd35abf85ca1a
+            env:
+{{ lib "nccl/aws-h100-efa-training-env.yaml" . | indent 12 }}
+            - name: NCCL_NET_PLUGIN
+              value: ofi
+            # B300 supports fused attention; let Transformer Engine choose per
+            # shape rather than pinning NVTE_* variables (same as AWS H100).
+            - name: ATTENTION_BACKEND
+              value: auto
 # --- GCP + H100 (TCPxo/FastRak, image from the TCPXO plugin version) ---
 - when:
     platform:
